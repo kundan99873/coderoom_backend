@@ -10,7 +10,7 @@ import { authenticate } from "../middleware/auth.middleware";
 import {
   registerUserSchema,
   loginUserSchema,
-} from "../../validations/auth.validation";
+} from "../validations/auth.validation";
 import upload from "../middleware/image.middleware";
 
 const router = Router();

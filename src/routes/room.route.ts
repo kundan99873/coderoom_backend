@@ -9,7 +9,7 @@ import {
   createFileSchema,
   updateFileContentSchema,
   handleJoinRequestSchema,
-} from "../../validations/room.validation";
+} from "../validations/room.validation";
 import {
   createRoom,
   getRoomById,
