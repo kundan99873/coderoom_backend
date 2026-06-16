@@ -15,9 +15,14 @@ import { initSocket } from "./socket";
 const app = express();
 const server = http.createServer(app);
 
+const whitelist = [
+  process.env.NODE_ENV === "development" ? "http://localhost:5173" : "",
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === "development" ? "http://localhost:5173" : process.env.FRONTEND_URL,
+    origin: whitelist.length > 0 ? whitelist : "*",
     credentials: true,
   },
 });

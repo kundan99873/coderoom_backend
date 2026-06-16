@@ -18,13 +18,17 @@ export const initSocket = (io: Server) => {
       const handshakeCookie = socket.handshake.headers.cookie;
       const cookies = handshakeCookie ? cookie.parse(handshakeCookie) : {};
       
-      const token =
+      let token =
         cookies.accessToken ||
         socket.handshake.auth?.token ||
         socket.handshake.query?.token;
 
       if (!token) {
         return next(new Error("Authentication error: Token not provided"));
+      }
+
+      if (typeof token === "string" && token.startsWith("Bearer ")) {
+        token = token.replace("Bearer ", "");
       }
 
       const decoded = jwt.verify(
@@ -89,6 +93,7 @@ export const initSocket = (io: Server) => {
       } catch (err) {
         console.error("Error joining room:", err);
         socket.emit("error-msg", "Internal server error during room joining");
+        socket.disconnect(true);
       }
     });
 
@@ -145,13 +150,15 @@ async function broadcastActiveUsers(io: Server, roomId: string) {
   const roomName = `room:${roomId}`;
   const sockets = await io.in(roomName).fetchSockets();
 
-  const users = sockets.map((s) => ({
-    socketId: s.id,
-    id: s.data.user?.id,
-    name: s.data.user?.name,
-    email: s.data.user?.email,
-    activeFileId: s.data.activeFileId || null,
-  }));
+  const users = sockets
+    .filter((s) => s.data && s.data.user)
+    .map((s) => ({
+      socketId: s.id,
+      id: s.data.user.id,
+      name: s.data.user.name,
+      email: s.data.user.email,
+      activeFileId: s.data.activeFileId || null,
+    }));
 
   // Deduplicate active users by user ID
   const uniqueUsersMap = new Map<string, typeof users[0]>();
