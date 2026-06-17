@@ -1,6 +1,6 @@
 import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
-import cookie from "cookie";
+import * as cookie from "cookie";
 import User from "./schema/user.schema";
 import RoomMember from "./schema/roomMember.schema";
 import Room from "./schema/rooms.schema";
@@ -23,20 +23,49 @@ export const initSocket = (io: Server) => {
         socket.handshake.auth?.token ||
         socket.handshake.query?.token;
 
-      if (!token) {
-        return next(new Error("Authentication error: Token not provided"));
+      let userId: string | null = null;
+
+      if (token) {
+        if (typeof token === "string" && token.startsWith("Bearer ")) {
+          token = token.replace("Bearer ", "");
+        }
+        try {
+          const decoded = jwt.verify(
+            token as string,
+            process.env.ACCESS_TOKEN_SECRET || "accessgdh56787$$%"
+          ) as JwtPayload;
+          userId = decoded.id;
+        } catch (jwtErr: any) {
+          // Token is invalid/expired. Fallback to refreshToken.
+        }
       }
 
-      if (typeof token === "string" && token.startsWith("Bearer ")) {
-        token = token.replace("Bearer ", "");
+      if (!userId) {
+        const refreshToken = cookies.refreshToken;
+        if (!refreshToken) {
+          return next(new Error("Authentication error: Token not provided"));
+        }
+
+        try {
+          const decodedRefresh = jwt.verify(
+            refreshToken,
+            process.env.REFRESH_TOKEN_SECRET || "gsahj76&^YHSUY*&"
+          ) as { id: string };
+
+          const user = await User.findById(decodedRefresh.id).select("+refreshToken");
+          if (!user) {
+            return next(new Error("Authentication error: Invalid session"));
+          }
+          if (user.refreshToken !== refreshToken) {
+            return next(new Error("Authentication error: Invalid session"));
+          }
+          userId = (user._id as any).toString();
+        } catch (refreshErr: any) {
+          return next(new Error("Authentication error: Invalid or expired token"));
+        }
       }
 
-      const decoded = jwt.verify(
-        token as string,
-        process.env.ACCESS_TOKEN_SECRET || "accessgdh56787$$%"
-      ) as JwtPayload;
-
-      const user = await User.findById(decoded.id).select("-password -refreshToken");
+      const user = await User.findById(userId).select("-password -refreshToken");
       if (!user) {
         return next(new Error("Authentication error: User not found"));
       }
@@ -50,7 +79,7 @@ export const initSocket = (io: Server) => {
       };
 
       next();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Socket authentication failed:", error);
       return next(new Error("Authentication error: Invalid or expired token"));
     }
@@ -76,14 +105,20 @@ export const initSocket = (io: Server) => {
           return;
         }
 
-        const isMember = await RoomMember.findOne({ roomId, userId: user.id });
-        if (!room.isPublic && !isMember) {
-          socket.emit("error-msg", "You do not have access to this private room");
-          socket.disconnect(true);
-          return;
-        }
-
-        socket.join(`room:${roomId}`);
+        let isMember = await RoomMember.findOne({ roomId, userId: user.id });
+        if (!isMember) {
+          if (!room.isPublic) {
+            socket.emit("error-msg", "You do not have access to this private room");
+            socket.disconnect(true);
+            return;
+          } else {
+            isMember = await RoomMember.create({
+              roomId: room._id,
+              userId: user.id,
+              role: "member",
+            });
+          }
+        } socket.join(`room:${roomId}`);
         socket.data.activeFileId = null;
 
         console.log(`Socket connection: User ${user.name} (${user.id}) joined room ${roomId}`);

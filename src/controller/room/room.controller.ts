@@ -85,14 +85,15 @@ export const getRoomById = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(404, "Room not found");
   }
 
-  // If the room is private, check if the user is a member of the room
-  if (!room.isPublic) {
-    const isMember = await RoomMember.findOne({
-      roomId,
-      userId: req.user.id,
-    });
+  // Check if requesting user is already a member of the room
+  const isMember = await RoomMember.findOne({
+    roomId,
+    userId: req.user.id,
+  });
 
-    if (!isMember) {
+  if (!isMember) {
+    // If the room is private, check if the user is a member of the room
+    if (!room.isPublic) {
       // Check if they have a pending/rejected join request
       const joinRequest = await RoomJoinRequest.findOne({
         roomId,
@@ -104,6 +105,13 @@ export const getRoomById = asyncHandler(async (req: Request, res: Response) => {
       throw new ApiError(403, "You do not have permission to view this room", {
         isPrivate: true,
         requestStatus,
+      });
+    } else {
+      // Auto-join the public room
+      await RoomMember.create({
+        roomId: room._id,
+        userId: req.user.id,
+        role: "member",
       });
     }
   }
