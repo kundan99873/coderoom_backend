@@ -6,7 +6,9 @@ const frontendUrl = process.env.FRONTEND_URL!;
 const whitelist: string[] = [
   env === "development" ? "http://localhost:5173" : "",
   frontendUrl,
-].filter(Boolean);
+]
+  .filter(Boolean)
+  .map((url) => url.replace(/\/$/, ""));
 
 const corsOptions: CorsOptions = {
   origin: (

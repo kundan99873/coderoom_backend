@@ -18,7 +18,9 @@ const server = http.createServer(app);
 const whitelist = [
   process.env.NODE_ENV === "development" ? "http://localhost:5173" : "",
   process.env.FRONTEND_URL,
-].filter(Boolean) as string[];
+]
+  .filter((url): url is string => !!url)
+  .map((url) => url.replace(/\/$/, ""));
 
 const io = new Server(server, {
   cors: {
