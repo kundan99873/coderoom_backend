@@ -95,6 +95,9 @@ export const initSocket = (io: Server) => {
       return;
     }
 
+    // Join a personal channel for this user
+    socket.join(`user:${user.id}`);
+
     // Join room channel
     socket.on("join-room", async () => {
       try {
@@ -108,8 +111,8 @@ export const initSocket = (io: Server) => {
         let isMember = await RoomMember.findOne({ roomId, userId: user.id });
         if (!isMember) {
           if (!room.isPublic) {
-            socket.emit("error-msg", "You do not have access to this private room");
-            socket.disconnect(true);
+            // Keep connection open so they can receive real-time approval, but don't join the room
+            socket.emit("join-request-status", { status: "pending" });
             return;
           } else {
             isMember = await RoomMember.create({
@@ -118,12 +121,20 @@ export const initSocket = (io: Server) => {
               role: "member",
             });
           }
-        } socket.join(`room:${roomId}`);
+        } 
+        
+        socket.join(`room:${roomId}`);
         socket.data.activeFileId = null;
+        socket.data.isMember = true; // cache membership status
 
         console.log(`Socket connection: User ${user.name} (${user.id}) joined room ${roomId}`);
         
         // Notify others and update the active user listing
+        socket.to(`room:${roomId}`).emit("user-joined", {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+        });
         await broadcastActiveUsers(io, roomId);
       } catch (err) {
         console.error("Error joining room:", err);
@@ -140,9 +151,8 @@ export const initSocket = (io: Server) => {
 
     // Handle character-level code changes
     socket.on("code-change", async (data: { fileId: string; content: string }) => {
-      // Check if user is a member of the room (only members can write)
-      const isMember = await RoomMember.findOne({ roomId, userId: user.id });
-      if (!isMember) {
+      // Check cached membership instead of querying DB on every character typed
+      if (!socket.data.isMember) {
         socket.emit("error-msg", "Only room members can edit files");
         return;
       }
@@ -175,6 +185,12 @@ export const initSocket = (io: Server) => {
     // Disconnection
     socket.on("disconnect", async () => {
       console.log(`Socket disconnection: User ${user.name} left room ${roomId}`);
+      if (socket.data.isMember) {
+        socket.to(`room:${roomId}`).emit("user-left", {
+          id: user.id,
+          name: user.name,
+        });
+      }
       await broadcastActiveUsers(io, roomId);
     });
   });

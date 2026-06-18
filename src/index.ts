@@ -30,6 +30,7 @@ const io = new Server(server, {
 });
 
 initSocket(io);
+app.set("io", io);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));

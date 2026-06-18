@@ -51,6 +51,15 @@ export const createJoinRequest = asyncHandler(async (req: Request, res: Response
     status: "pending",
   });
 
+  // Emit event to owner/admin in the room
+  const io = req.app.get("io");
+  if (io) {
+    io.to(`room:${roomId}`).emit("new-join-request", {
+      roomId,
+      userId,
+    });
+  }
+
   return res
     .status(201)
     .json(new ApiResponse("Join request submitted successfully", { joinRequest }));
@@ -110,6 +119,15 @@ export const handleJoinRequest = asyncHandler(async (req: Request, res: Response
         role: "member",
       });
     }
+  }
+
+  // Emit event to the requester
+  const io = req.app.get("io");
+  if (io) {
+    io.to(`user:${joinRequest.userId}`).emit("join-request-handled", {
+      roomId,
+      status,
+    });
   }
 
   return res
