@@ -28,10 +28,10 @@ export const createRoomFile = asyncHandler(async (req: Request, res: Response) =
   const roomId = req.params.roomId as string;
   const { name, language, content } = req.body;
 
-  // Only members can create files
+  // Only owners and editors can create files
   const membership = await RoomMember.findOne({ roomId, userId: req.user.id });
-  if (!membership) {
-    throw new ApiError(403, "Only room members can create files");
+  if (!membership || (membership.role !== "owner" && membership.role !== "editor")) {
+    throw new ApiError(403, "Only room owners and editors can create files");
   }
 
   // Check if filename is unique in the room
@@ -75,10 +75,10 @@ export const updateRoomFileContent = asyncHandler(async (req: Request, res: Resp
   const fileId = req.params.fileId as string;
   const { content, name, language } = req.body;
 
-  // Only members can update files
+  // Only owners and editors can edit files
   const membership = await RoomMember.findOne({ roomId, userId: req.user.id });
-  if (!membership) {
-    throw new ApiError(403, "Only room members can edit files");
+  if (!membership || (membership.role !== "owner" && membership.role !== "editor")) {
+    throw new ApiError(403, "Only room owners and editors can edit files");
   }
 
   const updateData: any = {};
@@ -112,10 +112,10 @@ export const deleteRoomFile = asyncHandler(async (req: Request, res: Response) =
   const roomId = req.params.roomId as string;
   const fileId = req.params.fileId as string;
 
-  // Only members can delete files
+  // Only owners and editors can delete files
   const membership = await RoomMember.findOne({ roomId, userId: req.user.id });
-  if (!membership) {
-    throw new ApiError(403, "Only room members can delete files");
+  if (!membership || (membership.role !== "owner" && membership.role !== "editor")) {
+    throw new ApiError(403, "Only room owners and editors can delete files");
   }
 
   const file = await RoomFile.findOneAndDelete({ _id: fileId, roomId });

@@ -39,7 +39,7 @@ export const addMember = asyncHandler(async (req: Request, res: Response) => {
   const newMember = await RoomMember.create({
     roomId,
     userId: userToAdd._id,
-    role: "member",
+    role: "viewer",
   });
 
   return res
@@ -99,8 +99,8 @@ export const removeMember = asyncHandler(async (req: Request, res: Response) => 
       throw new ApiError(403, "Access denied");
     }
 
-    if (requesterMembership.role === "member") {
-      throw new ApiError(403, "Members cannot remove others");
+    if (requesterMembership.role !== "owner" && requesterMembership.role !== "admin") {
+      throw new ApiError(403, "Only owner or admin can remove others");
     }
 
     if (requesterMembership.role === "admin" && (memberToRemove.role === "admin" || memberToRemove.role === "owner")) {

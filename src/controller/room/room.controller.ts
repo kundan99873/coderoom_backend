@@ -111,12 +111,15 @@ export const getRoomById = asyncHandler(async (req: Request, res: Response) => {
       await RoomMember.create({
         roomId: room._id,
         userId: req.user.id,
-        role: "member",
+        role: "viewer",
       });
     }
   }
 
-  return res.status(200).json(new ApiResponse("Room fetched successfully", room));
+  return res.status(200).json(new ApiResponse("Room fetched successfully", {
+    ...room.toObject(),
+    userRole: isMember ? isMember.role : "viewer"
+  }));
 });
 
 export const getUserRooms = asyncHandler(async (req: Request, res: Response) => {

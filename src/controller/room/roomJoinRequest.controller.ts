@@ -26,7 +26,7 @@ export const createJoinRequest = asyncHandler(async (req: Request, res: Response
     const newMember = await RoomMember.create({
       roomId,
       userId,
-      role: "member",
+      role: "viewer",
     });
     return res
       .status(201)
@@ -116,7 +116,7 @@ export const handleJoinRequest = asyncHandler(async (req: Request, res: Response
       await RoomMember.create({
         roomId,
         userId: joinRequest.userId,
-        role: "member",
+        role: "viewer",
       });
     }
   }

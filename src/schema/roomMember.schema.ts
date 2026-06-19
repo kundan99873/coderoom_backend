@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 export interface IRoomMember extends Document {
   roomId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
-  role: "owner" | "admin" | "member";
+  role: "owner" | "admin" | "editor" | "viewer";
   createdAt: Date;
 }
 
@@ -23,8 +23,8 @@ const roomMemberSchema = new Schema<IRoomMember>(
 
     role: {
       type: String,
-      enum: ["owner", "admin", "member"],
-      default: "member",
+      enum: ["owner", "admin", "editor", "viewer"],
+      default: "viewer",
     },
   },
   {

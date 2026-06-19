@@ -17,7 +17,7 @@ const addMemberSchema = z.object({
 });
 
 const updateMemberRoleSchema = z.object({
-  role: z.enum(["admin", "member"]),
+  role: z.enum(["admin", "editor", "viewer"]),
 });
 
 const createFileSchema = z.object({

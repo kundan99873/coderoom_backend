@@ -118,7 +118,7 @@ export const initSocket = (io: Server) => {
             isMember = await RoomMember.create({
               roomId: room._id,
               userId: user.id,
-              role: "member",
+              role: "viewer",
             });
           }
         } 
@@ -126,6 +126,7 @@ export const initSocket = (io: Server) => {
         socket.join(`room:${roomId}`);
         socket.data.activeFileId = null;
         socket.data.isMember = true; // cache membership status
+        socket.data.role = isMember.role; // cache user role
 
         console.log(`Socket connection: User ${user.name} (${user.id}) joined room ${roomId}`);
         
@@ -151,9 +152,10 @@ export const initSocket = (io: Server) => {
 
     // Handle character-level code changes
     socket.on("code-change", async (data: { fileId: string; content: string }) => {
-      // Check cached membership instead of querying DB on every character typed
-      if (!socket.data.isMember) {
-        socket.emit("error-msg", "Only room members can edit files");
+      // Check cached role instead of querying DB on every character typed
+      const role = socket.data.role;
+      if (role !== "owner" && role !== "editor") {
+        socket.emit("error-msg", "You do not have permission to edit files in this room");
         return;
       }
 
@@ -179,6 +181,11 @@ export const initSocket = (io: Server) => {
 
     // Handle file sync events (create, delete, rename)
     socket.on("file-event", (data: { action: "create" | "rename" | "delete"; fileId?: string; file?: any }) => {
+      const role = socket.data.role;
+      if (role !== "owner" && role !== "editor") {
+        socket.emit("error-msg", "You do not have permission to perform this file operation");
+        return;
+      }
       socket.to(`room:${roomId}`).emit("file-update", data);
     });
 
