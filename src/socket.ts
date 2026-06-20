@@ -1,6 +1,7 @@
 import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import * as cookie from "cookie";
+import mongoose from "mongoose";
 import User from "./schema/user.schema";
 import RoomMember from "./schema/roomMember.schema";
 import Room from "./schema/rooms.schema";
@@ -85,11 +86,11 @@ export const initSocket = (io: Server) => {
     }
   });
 
-  io.on("connection", (socket: Socket) => {
-    const roomId = socket.handshake.query.roomId as string;
+  io.on("connection", async (socket: Socket) => {
+    const initialRoomId = socket.handshake.query.roomId as string;
     const user = socket.data.user;
 
-    if (!roomId || !user) {
+    if (!initialRoomId || !user) {
       console.log("Disconnecting socket: missing roomId or user details");
       socket.disconnect(true);
       return;
@@ -97,6 +98,51 @@ export const initSocket = (io: Server) => {
 
     // Join a personal channel for this user
     socket.join(`user:${user.id}`);
+
+    // Resolve initialRoomId to the actual database roomId (ObjectId string)
+    let roomId = initialRoomId;
+    try {
+      const query: any = {};
+      if (mongoose.Types.ObjectId.isValid(initialRoomId)) {
+        query.$or = [{ _id: initialRoomId }, { customId: initialRoomId }];
+      } else {
+        query.customId = initialRoomId;
+      }
+
+      const room = await Room.findOne(query);
+      if (!room) {
+        console.log(`Disconnecting socket: Room not found for query roomId: ${initialRoomId}`);
+        socket.emit("error-msg", "Room not found");
+        socket.disconnect(true);
+        return;
+      }
+
+      // Lazy backfill customId if missing
+      if (!room.customId) {
+        const slugify = (text: string): string => {
+          return text
+            .toString()
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, "-")
+            .replace(/[^\w\-]+/g, "")
+            .replace(/\-\-+/g, "-")
+            .replace(/^-+/, "")
+            .replace(/-+$/, "");
+        };
+        const slugName = slugify(room.name) || "room";
+        const shortId = room._id.toString().slice(0, 8);
+        room.customId = `${slugName}-${shortId}`;
+        await room.save();
+      }
+
+      roomId = room._id.toString();
+    } catch (err) {
+      console.error("Socket error during roomId resolution:", err);
+      socket.emit("error-msg", "Authentication error: invalid room ID format");
+      socket.disconnect(true);
+      return;
+    }
 
     // Join room channel
     socket.on("join-room", async () => {

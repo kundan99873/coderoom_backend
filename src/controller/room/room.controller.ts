@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import Room from "../../schema/rooms.schema";
 import RoomMember from "../../schema/roomMember.schema";
 import RoomFile from "../../schema/roomFiles.schema";
@@ -6,6 +7,18 @@ import RoomJoinRequest from "../../schema/roomJoinRequest.schema";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { ApiError } from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
+
+const slugify = (text: string): string => {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^\w\-]+/g, "")
+    .replace(/\-\-+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
+};
 
 const getFileExtension = (language: string): string => {
   const map: Record<string, string> = {
@@ -45,11 +58,18 @@ const getDefaultContent = (language: string): string => {
 export const createRoom = asyncHandler(async (req: Request, res: Response) => {
   const { name, language, isPublic } = req.body;
 
+  const roomIdObj = new mongoose.Types.ObjectId();
+  const shortId = roomIdObj.toString().slice(0, 8);
+  const slugName = slugify(name) || "room";
+  const customId = `${slugName}-${shortId}`;
+
   const room = await Room.create({
+    _id: roomIdObj,
     name,
     language,
     isPublic,
     ownerId: req.user.id,
+    customId,
   });
 
   await RoomMember.create({
@@ -136,6 +156,16 @@ export const getUserRooms = asyncHandler(async (req: Request, res: Response) => 
   const rooms = memberships
     .map((member) => member.roomId)
     .filter((room) => room !== null);
+
+  // Lazy back-fill customId for rooms that don't have it
+  for (const room of rooms as any[]) {
+    if (!room.customId) {
+      const slugName = slugify(room.name) || "room";
+      const shortId = room._id.toString().slice(0, 8);
+      room.customId = `${slugName}-${shortId}`;
+      await room.save();
+    }
+  }
 
   return res
     .status(200)

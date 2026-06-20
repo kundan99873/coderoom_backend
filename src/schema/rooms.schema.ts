@@ -6,6 +6,7 @@ export interface IRoom extends Document {
   code: string;
   isPublic: boolean;
   ownerId: mongoose.Types.ObjectId;
+  customId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +17,12 @@ const roomSchema = new Schema<IRoom>(
       type: String,
       required: true,
       trim: true,
+    },
+
+    customId: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
 
     language: {
