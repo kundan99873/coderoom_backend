@@ -5,6 +5,7 @@ import { ApiError } from "../../utils/apiError";
 import { asyncHandler } from "../../utils/asyncHandler";
 import crypto from "crypto";
 import { ApiResponse } from "../../utils/apiResponse";
+import { sendEmail } from "../../helper/sendEmail";
 import {
   accessTokenCookieOptions,
   refreshTokenCookieOptions,
@@ -107,9 +108,114 @@ const getCurrentUserController = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse("User profile fetched successfully", user));
 });
 
+const forgotPasswordController = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new ApiError(404, "User with this email does not exist");
+  }
+
+  const resetToken = crypto.randomBytes(20).toString("hex");
+  const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  user.resetPasswordToken = resetToken;
+  user.resetPasswordExpires = resetExpires;
+  await user.save({ validateBeforeSave: false });
+
+  const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+  const message = `You are receiving this email because you (or someone else) have requested the reset of the password for your account.\n\n
+Please click on the following link, or paste this into your browser to complete the process:\n\n
+${resetUrl}\n\n
+If you did not request this, please ignore this email and your password will remain unchanged.\n`;
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+      <h2 style="color: #4f46e5; margin-bottom: 20px;">Password Reset Request</h2>
+      <p>You are receiving this email because you (or someone else) have requested the reset of the password for your account.</p>
+      <p>Please click the button below to reset your password. This link is valid for 1 hour.</p>
+      <div style="margin: 30px 0; text-align: center;">
+        <a href="${resetUrl}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block;">Reset Password</a>
+      </div>
+      <p style="color: #6b7280; font-size: 14px;">Or copy and paste this URL into your browser:</p>
+      <p style="word-break: break-all; color: #4f46e5; font-size: 14px;">${resetUrl}</p>
+      <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
+      <p style="color: #9ca3af; font-size: 12px;">If you did not request this, please ignore this email and your password will remain unchanged.</p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: user.email,
+    subject: "Coderoom - Password Reset Request",
+    text: message,
+    html,
+  });
+
+  return res.status(200).json(new ApiResponse("Password reset link sent to email"));
+});
+
+const resetPasswordController = asyncHandler(async (req, res) => {
+  const { token } = req.query;
+  const tokenStr = typeof token === "string" ? token : req.body.token;
+  const { password } = req.body;
+
+  if (!tokenStr) {
+    throw new ApiError(400, "Reset token is required");
+  }
+
+  const user = await User.findOne({
+    resetPasswordToken: tokenStr,
+    resetPasswordExpires: { $gt: new Date() },
+  });
+
+  if (!user) {
+    throw new ApiError(400, "Password reset token is invalid or has expired");
+  }
+
+  user.password = password;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpires = undefined;
+
+  await user.save();
+
+  return res.status(200).json(new ApiResponse("Password has been reset successfully"));
+});
+
+const changePasswordController = asyncHandler(async (req, res) => {
+  const { current_password, new_password } = req.body;
+
+  const user = await User.findById(req.user?.id).select("+password");
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (!user.password) {
+    throw new ApiError(400, "This account does not have a local password set");
+  }
+
+  const isMatch = await user.comparePassword(current_password);
+  if (!isMatch) {
+    throw new ApiError(400, "Incorrect current password");
+  }
+
+  if (current_password === new_password) {
+    throw new ApiError(400, "New password cannot be the same as your current password");
+  }
+
+  user.password = new_password;
+  await user.save();
+
+  return res.status(200).json(new ApiResponse("Password changed successfully"));
+});
+
 export {
   registerUserController,
   loginUserController,
   logoutUserController,
   getCurrentUserController,
+  forgotPasswordController,
+  resetPasswordController,
+  changePasswordController,
 };

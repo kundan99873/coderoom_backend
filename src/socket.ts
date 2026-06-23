@@ -90,14 +90,19 @@ export const initSocket = (io: Server) => {
     const initialRoomId = socket.handshake.query.roomId as string;
     const user = socket.data.user;
 
-    if (!initialRoomId || !user) {
-      console.log("Disconnecting socket: missing roomId or user details");
+    if (!user) {
+      console.log("Disconnecting socket: missing user details");
       socket.disconnect(true);
       return;
     }
 
     // Join a personal channel for this user
     socket.join(`user:${user.id}`);
+
+    if (!initialRoomId) {
+      console.log(`Socket connection: User ${user.name} (${user.id}) connected (global/no room)`);
+      return;
+    }
 
     // Resolve initialRoomId to the actual database roomId (ObjectId string)
     let roomId = initialRoomId;

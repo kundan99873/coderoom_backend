@@ -42,6 +42,16 @@ export const addMember = asyncHandler(async (req: Request, res: Response) => {
     role: "viewer",
   });
 
+  // Emit event to the invited user
+  const room = await Room.findById(roomId);
+  const io = req.app.get("io");
+  if (io && room) {
+    io.to(`user:${userToAdd._id}`).emit("room-invited", {
+      roomId,
+      roomName: room.name,
+    });
+  }
+
   return res
     .status(201)
     .json(new ApiResponse("Member added successfully", newMember));
@@ -109,6 +119,16 @@ export const removeMember = asyncHandler(async (req: Request, res: Response) => 
   }
 
   await RoomMember.deleteOne({ _id: memberToRemove._id });
+
+  // Emit event to the removed user (if it wasn't them leaving voluntarily)
+  if (!isLeaving) {
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user:${userId}`).emit("room-removed", {
+        roomId,
+      });
+    }
+  }
 
   return res.status(200).json(
     new ApiResponse(isLeaving ? "You have left the room" : "Member removed successfully")
