@@ -210,6 +210,122 @@ const changePasswordController = asyncHandler(async (req, res) => {
   return res.status(200).json(new ApiResponse("Password changed successfully"));
 });
 
+const googleAuthController = asyncHandler(async (req, res) => {
+  const rootUrl = "https://accounts.google.com/o/oauth2/v2/auth";
+  const options = {
+    redirect_uri: process.env.GOOGLE_REDIRECT_URI!,
+    client_id: process.env.GOOGLE_CLIENT_ID!,
+    access_type: "offline",
+    response_type: "code",
+    prompt: "consent",
+    scope: [
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ].join(" "),
+  };
+
+  const qs = new URLSearchParams(options);
+  return res.redirect(`${rootUrl}?${qs.toString()}`);
+});
+
+const googleLoginCallbackController = asyncHandler(async (req, res) => {
+  const code = req.query.code as string;
+  if (!code) {
+    throw new ApiError(400, "Google authorization code is missing");
+  }
+
+  // Exchange code for tokens
+  const tokenUrl = "https://oauth2.googleapis.com/token";
+  const values = {
+    code,
+    client_id: process.env.GOOGLE_CLIENT_ID!,
+    client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+    redirect_uri: process.env.GOOGLE_REDIRECT_URI!,
+    grant_type: "authorization_code",
+  };
+
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(values),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("Google token exchange failed:", errorBody);
+    throw new ApiError(500, "Failed to exchange code for token");
+  }
+
+  const { access_token } = await response.json();
+
+  // Fetch user profile from Google userinfo API
+  const userInfoUrl = `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${access_token}`;
+  const userResponse = await fetch(userInfoUrl);
+  if (!userResponse.ok) {
+    throw new ApiError(500, "Failed to fetch user info from Google");
+  }
+
+  const googleUser = await userResponse.json();
+  const { sub: googleId, email, name, picture } = googleUser;
+
+  // Find or create user
+  let user = await User.findOne({
+    $or: [{ googleId }, { email }],
+  }).select("+refreshToken");
+
+  if (!user) {
+    // Register new user
+    user = await User.create({
+      name,
+      email,
+      googleId,
+      provider: "google",
+      isEmailVerified: true,
+      avatar: picture ? { url: picture, publicId: "" } : undefined,
+    });
+  } else {
+    // User exists. Update linking details
+    let shouldSave = false;
+    if (!user.googleId) {
+      user.googleId = googleId;
+      shouldSave = true;
+    }
+    if (user.provider !== "google") {
+      user.provider = "google";
+      shouldSave = true;
+    }
+    if (!user.isEmailVerified) {
+      user.isEmailVerified = true;
+      shouldSave = true;
+    }
+    if (picture && (!user.avatar || !user.avatar.url)) {
+      user.avatar = { url: picture, publicId: "" };
+      shouldSave = true;
+    }
+    if (shouldSave) {
+      await user.save({ validateBeforeSave: false });
+    }
+  }
+
+  // Generate tokens
+  const accessToken = user.generateAccessToken();
+  const refreshToken = user.generateRefreshToken();
+
+  user.refreshToken = refreshToken;
+  user.lastLogin = new Date();
+  await user.save({ validateBeforeSave: false });
+
+  const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+
+  // Set cookies and redirect
+  res.cookie("accessToken", accessToken, accessTokenCookieOptions);
+  res.cookie("refreshToken", refreshToken, refreshTokenCookieOptions);
+  
+  return res.redirect(`${frontendUrl}/dashboard`);
+});
+
 export {
   registerUserController,
   loginUserController,
@@ -218,4 +334,7 @@ export {
   forgotPasswordController,
   resetPasswordController,
   changePasswordController,
+  googleAuthController,
+  googleLoginCallbackController,
 };
+

@@ -7,6 +7,8 @@ import {
   forgotPasswordController,
   resetPasswordController,
   changePasswordController,
+  googleAuthController,
+  googleLoginCallbackController,
 } from "../controller/user/auth.controller";
 import { validate } from "../middleware/validate.middleware";
 import { authenticate } from "../middleware/auth.middleware";
@@ -65,5 +67,13 @@ router
     validate(changePasswordSchema),
     changePasswordController,
   );
+
+router
+  .route("/auth/google")
+  .get(googleAuthController);
+
+router
+  .route("/google-login")
+  .get(googleLoginCallbackController);
 
 export default router;
