@@ -36,6 +36,7 @@ import {
   getJoinRequests,
   handleJoinRequest,
 } from "../controller/room/roomJoinRequest.controller";
+import { getRoomMessages } from "../controller/room/roomChat.controller";
 
 const router = Router();
 
@@ -99,6 +100,9 @@ router.post("/rooms/:roomId/files", authenticate, validate(createFileSchema), cr
 router.get("/rooms/:roomId/files", authenticate, getRoomFiles);
 router.patch("/rooms/:roomId/files/:fileId", authenticate, validate(updateFileContentSchema), updateRoomFileContent);
 router.delete("/rooms/:roomId/files/:fileId", authenticate, deleteRoomFile);
+
+// Chat routes
+router.get("/rooms/:roomId/messages", authenticate, getRoomMessages);
 
 // Join request routes
 router.post("/rooms/:roomId/join", authenticate, createJoinRequest);

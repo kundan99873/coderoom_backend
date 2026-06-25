@@ -162,6 +162,26 @@ export const updateMemberRole = asyncHandler(async (req: Request, res: Response)
   memberToUpdate.role = role;
   await memberToUpdate.save();
 
+  // Find socket for this user in the room and update its cached role
+  const io = req.app.get("io");
+  if (io) {
+    try {
+      const roomSockets = await io.in(`room:${roomId}`).fetchSockets();
+      for (const s of roomSockets) {
+        if (s.data && s.data.user && s.data.user.id === userId) {
+          s.data.role = role;
+        }
+      }
+    } catch (socketErr) {
+      console.error("Error updating socket roles:", socketErr);
+    }
+
+    io.to(`user:${userId}`).emit("member-role-updated", {
+      roomId,
+      role,
+    });
+  }
+
   return res
     .status(200)
     .json(new ApiResponse("Member role updated successfully", memberToUpdate));

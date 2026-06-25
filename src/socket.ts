@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import User from "./schema/user.schema";
 import RoomMember from "./schema/roomMember.schema";
 import Room from "./schema/rooms.schema";
+import Message from "./schema/message.schema";
 
 interface JwtPayload {
   id: string;
@@ -86,7 +87,7 @@ export const initSocket = (io: Server) => {
     }
   });
 
-  io.on("connection", async (socket: Socket) => {
+  io.on("connection", (socket: Socket) => {
     const initialRoomId = socket.handshake.query.roomId as string;
     const user = socket.data.user;
 
@@ -104,54 +105,59 @@ export const initSocket = (io: Server) => {
       return;
     }
 
-    // Resolve initialRoomId to the actual database roomId (ObjectId string)
-    let roomId = initialRoomId;
-    try {
-      const query: any = {};
-      if (mongoose.Types.ObjectId.isValid(initialRoomId)) {
-        query.$or = [{ _id: initialRoomId }, { customId: initialRoomId }];
-      } else {
-        query.customId = initialRoomId;
-      }
+    // Resolve initialRoomId asynchronously to avoid blocking the event loop tick
+    // where Socket.io expects us to register all event listeners.
+    const roomResolutionPromise = (async () => {
+      try {
+        const query: any = {};
+        if (mongoose.Types.ObjectId.isValid(initialRoomId)) {
+          query.$or = [{ _id: initialRoomId }, { customId: initialRoomId }];
+        } else {
+          query.customId = initialRoomId;
+        }
 
-      const room = await Room.findOne(query);
-      if (!room) {
-        console.log(`Disconnecting socket: Room not found for query roomId: ${initialRoomId}`);
-        socket.emit("error-msg", "Room not found");
+        const room = await Room.findOne(query);
+        if (!room) {
+          console.log(`Disconnecting socket: Room not found for query roomId: ${initialRoomId}`);
+          socket.emit("error-msg", "Room not found");
+          socket.disconnect(true);
+          return null;
+        }
+
+        // Lazy backfill customId if missing
+        if (!room.customId) {
+          const slugify = (text: string): string => {
+            return text
+              .toString()
+              .toLowerCase()
+              .trim()
+              .replace(/\s+/g, "-")
+              .replace(/[^\w\-]+/g, "")
+              .replace(/\-\-+/g, "-")
+              .replace(/^-+/, "")
+              .replace(/-+$/, "");
+          };
+          const slugName = slugify(room.name) || "room";
+          const shortId = room._id.toString().slice(0, 8);
+          room.customId = `${slugName}-${shortId}`;
+          await room.save();
+        }
+
+        return room._id.toString();
+      } catch (err) {
+        console.error("Socket error during roomId resolution:", err);
+        socket.emit("error-msg", "Authentication error: invalid room ID format");
         socket.disconnect(true);
-        return;
+        return null;
       }
-
-      // Lazy backfill customId if missing
-      if (!room.customId) {
-        const slugify = (text: string): string => {
-          return text
-            .toString()
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, "-")
-            .replace(/[^\w\-]+/g, "")
-            .replace(/\-\-+/g, "-")
-            .replace(/^-+/, "")
-            .replace(/-+$/, "");
-        };
-        const slugName = slugify(room.name) || "room";
-        const shortId = room._id.toString().slice(0, 8);
-        room.customId = `${slugName}-${shortId}`;
-        await room.save();
-      }
-
-      roomId = room._id.toString();
-    } catch (err) {
-      console.error("Socket error during roomId resolution:", err);
-      socket.emit("error-msg", "Authentication error: invalid room ID format");
-      socket.disconnect(true);
-      return;
-    }
+    })();
 
     // Join room channel
     socket.on("join-room", async () => {
       try {
+        const roomId = await roomResolutionPromise;
+        if (!roomId) return;
+
         const room = await Room.findById(roomId);
         if (!room) {
           socket.emit("error-msg", "Room not found");
@@ -197,12 +203,18 @@ export const initSocket = (io: Server) => {
 
     // Handle tracking which file is active for the user
     socket.on("active-file-change", async (fileId: string) => {
+      const roomId = await roomResolutionPromise;
+      if (!roomId) return;
+
       socket.data.activeFileId = fileId;
       await broadcastActiveUsers(io, roomId);
     });
 
     // Handle character-level code changes
     socket.on("code-change", async (data: { fileId: string; content: string }) => {
+      const roomId = await roomResolutionPromise;
+      if (!roomId) return;
+
       // Check cached role instead of querying DB on every character typed
       const role = socket.data.role;
       if (role !== "owner" && role !== "editor") {
@@ -220,7 +232,10 @@ export const initSocket = (io: Server) => {
     });
 
     // Handle user cursors synchronization
-    socket.on("cursor-move", (data: { fileId: string; position: { lineNumber: number; column: number } | null }) => {
+    socket.on("cursor-move", async (data: { fileId: string; position: { lineNumber: number; column: number } | null }) => {
+      const roomId = await roomResolutionPromise;
+      if (!roomId) return;
+
       socket.to(`room:${roomId}`).emit("cursor-update", {
         userId: user.id,
         userName: user.name,
@@ -231,7 +246,10 @@ export const initSocket = (io: Server) => {
     });
 
     // Handle file sync events (create, delete, rename)
-    socket.on("file-event", (data: { action: "create" | "rename" | "delete"; fileId?: string; file?: any }) => {
+    socket.on("file-event", async (data: { action: "create" | "rename" | "delete"; fileId?: string; file?: any }) => {
+      const roomId = await roomResolutionPromise;
+      if (!roomId) return;
+
       const role = socket.data.role;
       if (role !== "owner" && role !== "editor") {
         socket.emit("error-msg", "You do not have permission to perform this file operation");
@@ -240,8 +258,41 @@ export const initSocket = (io: Server) => {
       socket.to(`room:${roomId}`).emit("file-update", data);
     });
 
+    // Handle chat messages
+    socket.on("chat-message", async (data: { content: string }) => {
+      const roomId = await roomResolutionPromise;
+      if (!roomId) return;
+
+      try {
+        const content = data.content?.trim();
+        if (!content) return;
+
+        const isMember = socket.data.isMember;
+        if (!isMember) {
+          socket.emit("error-msg", "You do not have permission to chat in this room");
+          return;
+        }
+
+        const message = await Message.create({
+          roomId,
+          senderId: user.id,
+          senderName: user.name,
+          content,
+        });
+
+        // Broadcast to everyone in the room (including the sender)
+        io.to(`room:${roomId}`).emit("new-message", message);
+      } catch (err) {
+        console.error("Failed to process chat message:", err);
+        socket.emit("error-msg", "Failed to send message");
+      }
+    });
+
     // Disconnection
     socket.on("disconnect", async () => {
+      const roomId = await roomResolutionPromise;
+      if (!roomId) return;
+
       console.log(`Socket disconnection: User ${user.name} left room ${roomId}`);
       if (socket.data.isMember) {
         socket.to(`room:${roomId}`).emit("user-left", {

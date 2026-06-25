@@ -2,11 +2,18 @@ import type { CookieOptions } from "express";
 
 const isProduction = process.env.NODE_ENV === "production";
 const cookieDomain = process.env.COOKIE_DOMAIN?.trim() || undefined;
-const cookieSameSite: CookieOptions["sameSite"] = isProduction ? "none" : "lax";
+
+const cookieSameSite: CookieOptions["sameSite"] =
+  (process.env.COOKIE_SAMESITE as CookieOptions["sameSite"]) ||
+  (isProduction ? "none" : "lax");
+
+const cookieSecure =
+  process.env.COOKIE_SECURE === "true" ||
+  (process.env.COOKIE_SECURE === "false" ? false : isProduction);
 
 const baseCookieOptions: CookieOptions = {
   httpOnly: true,
-  secure: isProduction,
+  secure: cookieSecure,
   sameSite: cookieSameSite,
   ...(cookieDomain ? { domain: cookieDomain } : {}),
 };

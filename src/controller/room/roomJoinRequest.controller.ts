@@ -124,8 +124,10 @@ export const handleJoinRequest = asyncHandler(async (req: Request, res: Response
   // Emit event to the requester
   const io = req.app.get("io");
   if (io) {
+    const room = await Room.findById(roomId);
     io.to(`user:${joinRequest.userId}`).emit("join-request-handled", {
       roomId,
+      customId: room?.customId || roomId,
       status,
     });
   }
