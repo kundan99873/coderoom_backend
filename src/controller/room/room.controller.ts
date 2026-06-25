@@ -43,14 +43,73 @@ const getFileExtension = (language: string): string => {
 
 const getDefaultContent = (language: string): string => {
   const map: Record<string, string> = {
-    javascript: "// JavaScript — runs in browser sandbox\nconsole.log('Hello, World!');",
-    typescript: "// TypeScript — types are stripped, then run in browser\nconst greeting: string = 'Hello, World!';\nconsole.log(greeting);",
-    python: "# Python — runs in browser via Pyodide\nprint('Hello, World!')",
-    go: "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, World!\")\n}",
-    rust: "fn main() {\n    println!(\"Hello, World!\");\n}",
-    java: "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello, World!\");\n    }\n}",
-    cpp: "#include <iostream>\n\nint main() {\n    std::cout << \"Hello, World!\\n\";\n    return 0;\n}",
-    html: "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>Playground</title>\n</head>\n<body>\n  <h1>Hello, World!</h1>\n</body>\n</html>",
+    javascript: `// JavaScript — runs in browser sandbox
+console.log("Printing numbers from 1 to 10:");
+for (let i = 1; i <= 10; i++) {
+  console.log(i);
+}`,
+    typescript: `// TypeScript — types are stripped, then run in browser
+console.log("Printing numbers from 1 to 10:");
+const numbers: number[] = Array.from({ length: 10 }, (_, i) => i + 1);
+numbers.forEach((num: number) => {
+  console.log(num);
+});`,
+    python: `# Python — runs in browser via Pyodide
+print("Printing numbers from 1 to 10:")
+for i in range(1, 11):
+    print(i)`,
+    go: `package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Printing numbers from 1 to 10:")
+    for i := 1; i <= 10; i++ {
+        fmt.Println(i)
+    }
+}`,
+    rust: `fn main() {
+    println!("Printing numbers from 1 to 10:");
+    for i in 1..=10 {
+        println!("{}", i);
+    }
+}`,
+    java: `class Main {
+    public static void main(String[] args) {
+        System.out.println("Printing numbers from 1 to 10:");
+        for (int i = 1; i <= 10; i++) {
+            System.out.println(i);
+        }
+    }
+}`,
+    cpp: `#include <iostream>
+
+int main() {
+    std::cout << "Printing numbers from 1 to 10:\\n";
+    for (int i = 1; i <= 10; ++i) {
+        std::cout << i << "\\n";
+    }
+    return 0;
+}`,
+    html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Playground</title>
+</head>
+<body>
+  <h1>Numbers from 1 to 10:</h1>
+  <ul id="numbers"></ul>
+  <script>
+    const ul = document.getElementById('numbers');
+    for (let i = 1; i <= 10; i++) {
+      const li = document.createElement('li');
+      li.textContent = i;
+      ul.appendChild(li);
+    }
+  </script>
+</body>
+</html>`,
   };
   return map[language] || "";
 };
@@ -80,7 +139,7 @@ export const createRoom = asyncHandler(async (req: Request, res: Response) => {
 
   const lang = language || "javascript";
   const ext = getFileExtension(lang);
-  const defaultFileName = `index.${ext}`;
+  const defaultFileName = lang === "java" ? "Main.java" : `index.${ext}`;
   const defaultContent = getDefaultContent(lang);
 
   await RoomFile.create({
