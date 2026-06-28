@@ -1,6 +1,9 @@
 import type { CookieOptions } from "express";
 
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction =
+  process.env.NODE_ENV?.trim().toLowerCase() === "production" ||
+  process.env.NODE_ENV?.trim().toLowerCase() === "prod" ||
+  (!!process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"));
 const cookieDomain = process.env.COOKIE_DOMAIN?.trim() || undefined;
 
 const cookieSameSite: CookieOptions["sameSite"] =
@@ -25,7 +28,7 @@ const accessTokenCookieOptions: CookieOptions = {
 
 const refreshTokenCookieOptions: CookieOptions = {
   ...baseCookieOptions,
-  maxAge: 7 * 24 * 60 * 60 * 1000,
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
 };
 
 const clearCookieOptions: CookieOptions = {

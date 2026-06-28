@@ -13,6 +13,7 @@ import roomRouter from "./routes/room.route";
 import { initSocket } from "./socket";
 
 const app = express();
+app.set("trust proxy", 1);
 const server = http.createServer(app);
 
 const whitelist = [
