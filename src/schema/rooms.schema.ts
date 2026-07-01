@@ -6,6 +6,7 @@ export interface IRoom extends Document {
   code: string;
   isPublic: boolean;
   ownerId: mongoose.Types.ObjectId;
+  teamId?: mongoose.Types.ObjectId;
   customId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -44,6 +45,11 @@ const roomSchema = new Schema<IRoom>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+
+    teamId: {
+      type: Schema.Types.ObjectId,
+      ref: "Team",
     },
   },
   {

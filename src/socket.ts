@@ -6,6 +6,7 @@ import User from "./schema/user.schema";
 import RoomMember from "./schema/roomMember.schema";
 import Room from "./schema/rooms.schema";
 import Message from "./schema/message.schema";
+import TeamMember from "./schema/teamMember.schema";
 
 interface JwtPayload {
   id: string;
@@ -167,23 +168,41 @@ export const initSocket = (io: Server) => {
 
         let isMember = await RoomMember.findOne({ roomId, userId: user.id });
         if (!isMember) {
-          if (!room.isPublic) {
-            // Keep connection open so they can receive real-time approval, but don't join the room
-            socket.emit("join-request-status", { status: "pending" });
-            return;
-          } else {
-            isMember = await RoomMember.create({
-              roomId: room._id,
+          let hasTeamAccess = false;
+          if (room.teamId) {
+            const isTeamMember = await TeamMember.findOne({
+              teamId: room.teamId,
               userId: user.id,
-              role: "viewer",
             });
+            if (isTeamMember) {
+              isMember = await RoomMember.create({
+                roomId: room._id,
+                userId: user.id,
+                role: "editor",
+              });
+              hasTeamAccess = true;
+            }
+          }
+
+          if (!hasTeamAccess) {
+            if (!room.isPublic) {
+              // Keep connection open so they can receive real-time approval, but don't join the room
+              socket.emit("join-request-status", { status: "pending" });
+              return;
+            } else {
+              isMember = await RoomMember.create({
+                roomId: room._id,
+                userId: user.id,
+                role: "viewer",
+              });
+            }
           }
         } 
         
         socket.join(`room:${roomId}`);
         socket.data.activeFileId = null;
         socket.data.isMember = true; // cache membership status
-        socket.data.role = isMember.role; // cache user role
+        socket.data.role = isMember?.role || "viewer"; // cache user role
 
         console.log(`Socket connection: User ${user.name} (${user.id}) joined room ${roomId}`);
         

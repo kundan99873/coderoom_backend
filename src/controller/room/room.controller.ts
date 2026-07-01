@@ -4,6 +4,7 @@ import Room from "../../schema/rooms.schema";
 import RoomMember from "../../schema/roomMember.schema";
 import RoomFile from "../../schema/roomFiles.schema";
 import RoomJoinRequest from "../../schema/roomJoinRequest.schema";
+import TeamMember from "../../schema/teamMember.schema";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { ApiError } from "../../utils/apiError";
 import { ApiResponse } from "../../utils/apiResponse";
@@ -115,7 +116,17 @@ int main() {
 };
 
 export const createRoom = asyncHandler(async (req: Request, res: Response) => {
-  const { name, language, isPublic } = req.body;
+  const { name, language, isPublic, teamId } = req.body;
+
+  if (teamId) {
+    const isTeamMember = await TeamMember.findOne({
+      teamId,
+      userId: req.user.id,
+    });
+    if (!isTeamMember) {
+      throw new ApiError(403, "You must be a member of the team to create a room for it");
+    }
+  }
 
   const roomIdObj = new mongoose.Types.ObjectId();
   const shortId = roomIdObj.toString().slice(0, 8);
@@ -129,6 +140,7 @@ export const createRoom = asyncHandler(async (req: Request, res: Response) => {
     isPublic,
     ownerId: req.user.id,
     customId,
+    teamId: teamId || undefined,
   });
 
   await RoomMember.create({
@@ -165,33 +177,51 @@ export const getRoomById = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Check if requesting user is already a member of the room
-  const isMember = await RoomMember.findOne({
+  let isMember = await RoomMember.findOne({
     roomId,
     userId: req.user.id,
   });
 
   if (!isMember) {
-    // If the room is private, check if the user is a member of the room
-    if (!room.isPublic) {
-      // Check if they have a pending/rejected join request
-      const joinRequest = await RoomJoinRequest.findOne({
-        roomId,
+    let hasTeamAccess = false;
+    if (room.teamId) {
+      const isTeamMember = await TeamMember.findOne({
+        teamId: room.teamId,
         userId: req.user.id,
-      }).sort({ createdAt: -1 });
-
-      const requestStatus = joinRequest ? joinRequest.status : "idle";
-
-      throw new ApiError(403, "You do not have permission to view this room", {
-        isPrivate: true,
-        requestStatus,
       });
-    } else {
-      // Auto-join the public room
-      await RoomMember.create({
-        roomId: room._id,
-        userId: req.user.id,
-        role: "viewer",
-      });
+      if (isTeamMember) {
+        isMember = await RoomMember.create({
+          roomId: room._id,
+          userId: req.user.id,
+          role: "editor",
+        });
+        hasTeamAccess = true;
+      }
+    }
+
+    if (!hasTeamAccess) {
+      // If the room is private, check if the user is a member of the room
+      if (!room.isPublic) {
+        // Check if they have a pending/rejected join request
+        const joinRequest = await RoomJoinRequest.findOne({
+          roomId,
+          userId: req.user.id,
+        }).sort({ createdAt: -1 });
+
+        const requestStatus = joinRequest ? joinRequest.status : "idle";
+
+        throw new ApiError(403, "You do not have permission to view this room", {
+          isPrivate: true,
+          requestStatus,
+        });
+      } else {
+        // Auto-join the public room
+        isMember = await RoomMember.create({
+          roomId: room._id,
+          userId: req.user.id,
+          role: "viewer",
+        });
+      }
     }
   }
 
