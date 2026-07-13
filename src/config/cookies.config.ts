@@ -7,7 +7,7 @@ const isProduction =
 const cookieDomain = process.env.COOKIE_DOMAIN?.trim() || undefined;
 
 const cookieSameSite: CookieOptions["sameSite"] =
-  (process.env.COOKIE_SAMESITE as CookieOptions["sameSite"]) || "lax";
+  (process.env.COOKIE_SAMESITE as CookieOptions["sameSite"]) || (isProduction ? "none" : "lax");
 
 const cookieSecure =
   process.env.COOKIE_SECURE === "true" ||
@@ -17,7 +17,6 @@ const baseCookieOptions: CookieOptions = {
   httpOnly: true,
   secure: cookieSecure,
   sameSite: cookieSameSite,
-  path: "/",
   ...(cookieDomain ? { domain: cookieDomain } : {}),
 };
 
