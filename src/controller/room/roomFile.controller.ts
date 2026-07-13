@@ -53,6 +53,8 @@ export const createRoomFile = asyncHandler(async (req: Request, res: Response) =
     createdBy: req.user.id,
   });
 
+  await Room.findByIdAndUpdate(roomId, { updatedAt: new Date() });
+
   return res
     .status(201)
     .json(new ApiResponse("File created successfully", file));
@@ -103,6 +105,8 @@ export const updateRoomFileContent = asyncHandler(async (req: Request, res: Resp
     throw new ApiError(404, "File not found");
   }
 
+  await Room.findByIdAndUpdate(roomId, { updatedAt: new Date() });
+
   return res
     .status(200)
     .json(new ApiResponse("File updated successfully", file));
@@ -122,6 +126,8 @@ export const deleteRoomFile = asyncHandler(async (req: Request, res: Response) =
   if (!file) {
     throw new ApiError(404, "File not found");
   }
+
+  await Room.findByIdAndUpdate(roomId, { updatedAt: new Date() });
 
   return res
     .status(200)
