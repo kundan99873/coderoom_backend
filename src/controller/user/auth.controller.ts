@@ -1,5 +1,6 @@
 import { UploadApiResponse } from "cloudinary";
 import { uploadMediaToCloudinary } from "../../helper/uploadFileToCloudinary";
+import jwt from "jsonwebtoken";
 import User from "../../schema/user.schema";
 import { ApiError } from "../../utils/apiError";
 import { asyncHandler } from "../../utils/asyncHandler";
@@ -329,6 +330,39 @@ const googleLoginCallbackController = asyncHandler(async (req, res) => {
   return res.redirect(`${frontendUrl}/dashboard`);
 });
 
+const refreshTokenController = asyncHandler(async (req, res) => {
+  const refreshToken = req.cookies?.refreshToken;
+  if (!refreshToken) {
+    throw new ApiError(401, "Refresh token is missing");
+  }
+
+  try {
+    const decodedRefresh = jwt.verify(
+      refreshToken,
+      process.env.REFRESH_TOKEN_SECRET || "gsahj76&^YHSUY*&"
+    ) as { id: string };
+
+    const user = await User.findById(decodedRefresh.id).select("+refreshToken");
+    if (!user || user.refreshToken !== refreshToken) {
+      throw new ApiError(401, "Invalid session. Please log in again.");
+    }
+
+    const accessToken = user.generateAccessToken();
+    const newRefreshToken = user.generateRefreshToken();
+
+    user.refreshToken = newRefreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    return res
+      .cookie("accessToken", accessToken, accessTokenCookieOptions)
+      .cookie("refreshToken", newRefreshToken, refreshTokenCookieOptions)
+      .status(200)
+      .json(new ApiResponse("Token refreshed successfully", { accessToken }));
+  } catch (error) {
+    throw new ApiError(401, "Session expired. Please log in again.");
+  }
+});
+
 export {
   registerUserController,
   loginUserController,
@@ -339,5 +373,6 @@ export {
   changePasswordController,
   googleAuthController,
   googleLoginCallbackController,
+  refreshTokenController,
 };
 

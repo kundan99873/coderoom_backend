@@ -9,6 +9,7 @@ import {
   changePasswordController,
   googleAuthController,
   googleLoginCallbackController,
+  refreshTokenController,
 } from "../controller/user/auth.controller";
 import { validate } from "../middleware/validate.middleware";
 import { authenticate } from "../middleware/auth.middleware";
@@ -41,6 +42,10 @@ router
 router
   .route("/auth/logout")
   .post(authenticate, logoutUserController);
+
+router
+  .route("/auth/refresh-token")
+  .post(refreshTokenController);
 
 router
   .route("/auth/me")
