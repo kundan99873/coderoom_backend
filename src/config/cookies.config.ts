@@ -4,7 +4,13 @@ const isProduction =
   process.env.NODE_ENV?.trim().toLowerCase() === "production" ||
   process.env.NODE_ENV?.trim().toLowerCase() === "prod" ||
   (!!process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"));
-const cookieDomain = process.env.COOKIE_DOMAIN?.trim() || undefined;
+let defaultDomain: string | undefined = undefined;
+if (process.env.COOKIE_DOMAIN?.trim()) {
+  defaultDomain = process.env.COOKIE_DOMAIN.trim();
+} else if (isProduction && (process.env.FRONTEND_URL?.includes("codesroom.in") || process.env.GOOGLE_REDIRECT_URI?.includes("codesroom.in"))) {
+  defaultDomain = ".codesroom.in";
+}
+const cookieDomain = defaultDomain;
 
 const cookieSameSite: CookieOptions["sameSite"] =
   (process.env.COOKIE_SAMESITE as CookieOptions["sameSite"]) || (isProduction ? "none" : "lax");

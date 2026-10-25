@@ -1,14 +1,17 @@
 
 import cors, { type CorsOptions } from "cors";
 
-const env = process.env.NODE_ENV || "development";
-const frontendUrl = process.env.FRONTEND_URL!;
-const whitelist: string[] = [
-  env === "development" ? "http://localhost:5173" : "",
-  frontendUrl,
-]
-  .filter(Boolean)
-  .map((url) => url.replace(/\/$/, ""));
+const whitelist = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://codesroom.in",
+  "https://www.codesroom.in",
+];
+
+export const isAllowedOrigin = (origin?: string): boolean => {
+  if (!origin) return true;
+  return whitelist.includes(origin);
+};
 
 const corsOptions: CorsOptions = {
   origin: (
@@ -18,7 +21,7 @@ const corsOptions: CorsOptions = {
     if (!origin || whitelist.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      callback(null, false);
     }
   },
   credentials: true,
@@ -27,3 +30,4 @@ const corsOptions: CorsOptions = {
 const corsConfig = cors(corsOptions);
 
 export default corsConfig;
+
