@@ -23,6 +23,7 @@ const baseCookieOptions: CookieOptions = {
   httpOnly: true,
   secure: cookieSecure,
   sameSite: cookieSameSite,
+  path: "/",
   ...(cookieDomain ? { domain: cookieDomain } : {}),
 };
 
