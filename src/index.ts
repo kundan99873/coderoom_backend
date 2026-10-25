@@ -11,6 +11,7 @@ import connectDB from "./config/dbConnection.config";
 import authRouter from "./routes/auth.route";
 import roomRouter from "./routes/room.route";
 import teamRouter from "./routes/team.route";
+import snippetRouter from "./routes/snippet.route";
 import { initSocket } from "./socket";
 
 const app = express();
@@ -56,6 +57,7 @@ app.get("/", (_req, res) => {
 app.use("/api", authRouter);
 app.use("/api", roomRouter);
 app.use("/api", teamRouter);
+app.use("/api", snippetRouter);
 
 const PORT = process.env.PORT || 3000;
 

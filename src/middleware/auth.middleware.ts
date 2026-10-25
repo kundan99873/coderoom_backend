@@ -82,3 +82,38 @@ export const authenticate = asyncHandler(
   }
 );
 
+export const optionalAuthenticate = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) => {
+  const token =
+    req.cookies?.accessToken ||
+    req.headers.authorization?.replace("Bearer ", "") ||
+    req.header("Authorization")?.replace("Bearer ", "");
+
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(
+      token,
+      process.env.ACCESS_TOKEN_SECRET || "accessgdh56787$$%"
+    ) as JwtPayload;
+
+    const user = await User.findById(decoded.id).select("-password -refreshToken");
+    if (user) {
+      req.user = {
+        id: (user._id as any).toString(),
+        email: user.email,
+        role: user.role,
+      };
+    }
+  } catch (_e) {
+    // Ignore invalid/expired tokens for optional authentication
+  }
+
+  next();
+};
+
