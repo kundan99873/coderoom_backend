@@ -29,7 +29,7 @@ const baseCookieOptions: CookieOptions = {
 
 const accessTokenCookieOptions: CookieOptions = {
   ...baseCookieOptions,
-  maxAge: 15 * 60 * 1000,
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (prevents premature session drop)
 };
 
 const refreshTokenCookieOptions: CookieOptions = {

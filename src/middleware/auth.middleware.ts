@@ -30,8 +30,13 @@ export const authenticate = asyncHandler(
           process.env.REFRESH_TOKEN_SECRET || "gsahj76&^YHSUY*&"
         ) as { id: string };
 
-        const user = await User.findById(decodedRefresh.id).select("+refreshToken");
-        if (!user || user.refreshToken !== refreshToken) {
+        const user = await User.findById(decodedRefresh.id).select("+refreshToken +refreshTokens");
+        const isTokenValid = Boolean(
+          user &&
+          ((user.refreshTokens && user.refreshTokens.includes(refreshToken)) ||
+            user.refreshToken === refreshToken)
+        );
+        if (!user || !isTokenValid) {
           throw new ApiError(401, "Invalid session. Please log in again.");
         }
 

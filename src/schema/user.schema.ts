@@ -27,6 +27,7 @@ export interface IUser {
   resetPasswordExpires?: Date;
 
   refreshToken?: string;
+  refreshTokens?: string[];
 
   lastLogin?: Date;
   loginAttempts?: Number;
@@ -121,6 +122,12 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
       select: false,
     },
 
+    refreshTokens: {
+      type: [String],
+      default: [],
+      select: false,
+    },
+
     lastLogin: {
       type: Date,
     },
@@ -164,7 +171,7 @@ userSchema.methods.generateAccessToken = function (): string {
     },
     process.env.ACCESS_TOKEN_SECRET || "accessgdh56787$$%",
     {
-      expiresIn: (process.env.ACCESS_TOKEN_EXPIRES || "15m") as any,
+      expiresIn: (process.env.ACCESS_TOKEN_EXPIRES || "7d") as any,
     },
   );
 };

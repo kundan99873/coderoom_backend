@@ -17,7 +17,7 @@ import {
 const router = Router();
 
 // Apply auth to all team routes
-router.use(authenticate);
+router.use("/teams", authenticate);
 
 router
   .route("/teams")

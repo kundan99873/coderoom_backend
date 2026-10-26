@@ -55,11 +55,15 @@ export const initSocket = (io: Server) => {
             process.env.REFRESH_TOKEN_SECRET || "gsahj76&^YHSUY*&"
           ) as { id: string };
 
-          const user = await User.findById(decodedRefresh.id).select("+refreshToken");
+          const user = await User.findById(decodedRefresh.id).select("+refreshToken +refreshTokens");
           if (!user) {
             return next(new Error("Authentication error: Invalid session"));
           }
-          if (user.refreshToken !== refreshToken) {
+          const isTokenValid = Boolean(
+            (user.refreshTokens && user.refreshTokens.includes(refreshToken)) ||
+            user.refreshToken === refreshToken
+          );
+          if (!isTokenValid) {
             return next(new Error("Authentication error: Invalid session"));
           }
           userId = (user._id as any).toString();

@@ -77,15 +77,11 @@ const loginUserController = asyncHandler(async (req, res) => {
   const refreshToken = user.generateRefreshToken();
 
   user.refreshToken = refreshToken;
+  const currentTokens = user.refreshTokens || [];
+  user.refreshTokens = [...currentTokens.slice(-9), refreshToken];
   user.lastLogin = new Date();
 
   await user.save({ validateBeforeSave: false });
-
-  const cookieOptions = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict" as const,
-  };
 
   return res
     .cookie("accessToken", accessToken, accessTokenCookieOptions)
@@ -95,8 +91,19 @@ const loginUserController = asyncHandler(async (req, res) => {
 });
 
 const logoutUserController = asyncHandler(async (req, res) => {
+  const refreshToken = req.cookies?.refreshToken;
   if (req.user?.id) {
-    await User.findByIdAndUpdate(req.user.id, { $unset: { refreshToken: "" } });
+    if (refreshToken) {
+      await User.findByIdAndUpdate(req.user.id, {
+        $pull: { refreshTokens: refreshToken },
+        $unset: { refreshToken: "" },
+      });
+    } else {
+      await User.findByIdAndUpdate(req.user.id, {
+        $set: { refreshTokens: [] },
+        $unset: { refreshToken: "" },
+      });
+    }
   }
   return res
     .clearCookie("accessToken", clearCookieOptions)
@@ -218,11 +225,18 @@ const changePasswordController = asyncHandler(async (req, res) => {
 const googleAuthController = asyncHandler(async (req, res) => {
   const rootUrl = "https://accounts.google.com/o/oauth2/v2/auth";
 
-  const redirectTo = (req.query.redirect_to as string) || (req.query.return_to as string) || "";
-  let state: string | undefined = undefined;
-  if (redirectTo && isAllowedOrigin(redirectTo)) {
-    state = Buffer.from(JSON.stringify({ returnTo: redirectTo })).toString("base64");
+  const defaultFrontend = (process.env.FRONTEND_URL || "https://codesroom.in").replace(/\/$/, "");
+  let origin = (req.query.origin as string) || "";
+  if (!origin || !isAllowedOrigin(origin)) {
+    origin = defaultFrontend;
   }
+
+  let redirectPath = (req.query.redirect as string) || (req.query.redirect_to as string) || (req.query.return_to as string) || "/dashboard";
+  if (!redirectPath.startsWith("/") || redirectPath.startsWith("//")) {
+    redirectPath = "/dashboard";
+  }
+
+  const state = Buffer.from(JSON.stringify({ returnTo: origin, path: redirectPath })).toString("base64");
 
   const options: Record<string, string> = {
     redirect_uri: process.env.GOOGLE_REDIRECT_URI!,
@@ -234,11 +248,8 @@ const googleAuthController = asyncHandler(async (req, res) => {
       "https://www.googleapis.com/auth/userinfo.profile",
       "https://www.googleapis.com/auth/userinfo.email",
     ].join(" "),
+    state,
   };
-
-  if (state) {
-    options.state = state;
-  }
 
   const qs = new URLSearchParams(options);
   return res.redirect(`${rootUrl}?${qs.toString()}`);
@@ -247,6 +258,7 @@ const googleAuthController = asyncHandler(async (req, res) => {
 const googleLoginCallbackController = asyncHandler(async (req, res) => {
   const defaultFrontend = (process.env.FRONTEND_URL || "https://codesroom.in").replace(/\/$/, "");
   let targetFrontend = defaultFrontend;
+  let targetPath = "/dashboard";
 
   if (req.query.state) {
     try {
@@ -255,6 +267,14 @@ const googleLoginCallbackController = asyncHandler(async (req, res) => {
       );
       if (decoded?.returnTo && isAllowedOrigin(decoded.returnTo)) {
         targetFrontend = decoded.returnTo.replace(/\/$/, "");
+      }
+      if (
+        decoded?.path &&
+        typeof decoded.path === "string" &&
+        decoded.path.startsWith("/") &&
+        !decoded.path.startsWith("//")
+      ) {
+        targetPath = decoded.path;
       }
     } catch {
       // ignore invalid state
@@ -357,6 +377,8 @@ const googleLoginCallbackController = asyncHandler(async (req, res) => {
     const refreshToken = user.generateRefreshToken();
 
     user.refreshToken = refreshToken;
+    const currentTokens = user.refreshTokens || [];
+    user.refreshTokens = [...currentTokens.slice(-9), refreshToken];
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
 
@@ -364,7 +386,7 @@ const googleLoginCallbackController = asyncHandler(async (req, res) => {
     res.cookie("accessToken", accessToken, accessTokenCookieOptions);
     res.cookie("refreshToken", refreshToken, refreshTokenCookieOptions);
     
-    return res.redirect(`${targetFrontend}/dashboard`);
+    return res.redirect(`${targetFrontend}${targetPath}`);
   } catch (error: any) {
     console.error("Google login callback error:", error);
     return res.redirect(`${targetFrontend}/auth?error=${encodeURIComponent(error?.message || "Google authentication failed")}`);
@@ -383,15 +405,23 @@ const refreshTokenController = asyncHandler(async (req, res) => {
       process.env.REFRESH_TOKEN_SECRET || "gsahj76&^YHSUY*&"
     ) as { id: string };
 
-    const user = await User.findById(decodedRefresh.id).select("+refreshToken");
-    if (!user || user.refreshToken !== refreshToken) {
+    const user = await User.findById(decodedRefresh.id).select("+refreshToken +refreshTokens");
+    const isTokenValid = Boolean(
+      user &&
+      ((user.refreshTokens && user.refreshTokens.includes(refreshToken)) ||
+        user.refreshToken === refreshToken)
+    );
+
+    if (!user || !isTokenValid) {
       throw new ApiError(401, "Invalid session. Please log in again.");
     }
 
     const accessToken = user.generateAccessToken();
     const newRefreshToken = user.generateRefreshToken();
 
+    const existingTokens = user.refreshTokens ? user.refreshTokens.filter((t) => t !== refreshToken) : [];
     user.refreshToken = newRefreshToken;
+    user.refreshTokens = [...existingTokens.slice(-8), refreshToken, newRefreshToken];
     await user.save({ validateBeforeSave: false });
 
     return res
